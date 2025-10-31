@@ -1,63 +1,47 @@
 #https://zhuanlan.zhihu.com/p/613526316
-
-
 import torch
+
 from torchvision import datasets, transforms
 from torch.autograd import Variable
 import time
 import matplotlib.pyplot as plt
+from MLP import MLP
 
-# 定义ToTensor和Normalize的transform
-to_tensor = transforms.ToTensor()
-normalize = transforms.Normalize((0.5,), (0.5,))
+def load_data():
 
-# 定义Compose的transform
-transform = transforms.Compose([
-    to_tensor,  # 转换为张量
-    normalize  # 标准化
-])
+    # 定义ToTensor和Normalize的transform
+    to_tensor = transforms.ToTensor()
+    normalize = transforms.Normalize((0.5,), (0.5,))
 
-# 下载数据集
-data_train = datasets.MNIST(root="..//data//",
-                            transform=transform,
-                            train=True,
-                            download=True)
+    # 定义Compose的transform
+    transform = transforms.Compose([
+        to_tensor,  # 转换为张量
+        normalize  # 标准化
+    ])
 
-data_test = datasets.MNIST(root="..//data//",
-                           transform=transform,
-                           train=False,
-                           download=True)
-# 装载数据
-data_loader_train = torch.utils.data.DataLoader(dataset=data_train,
-                                                batch_size=64,
-                                                shuffle=True)
+    # 指定数据集
+    data_train = datasets.MNIST(root="..//data//",
+                                transform=transform,
+                                train=True,
+                                download=True)
 
-data_loader_test = torch.utils.data.DataLoader(dataset=data_test,
-                                               batch_size=64,
-                                               shuffle=True)
+    data_test = datasets.MNIST(root="..//data//",
+                               transform=transform,
+                               train=False,
+                               download=True)
+    # 装载数据
+    data_loader_train = torch.utils.data.DataLoader(dataset=data_train,
+                                                    batch_size=64,
+                                                    shuffle=True)
 
+    data_loader_test = torch.utils.data.DataLoader(dataset=data_test,
+                                                   batch_size=64,
+                                                   shuffle=True)
+    #print(len(data_train),len(data_loader_train))
 
-class MLP(torch.nn.Module):
+    return data_loader_train,data_loader_test
 
-    def __init__(self, num_i, num_h, num_o):
-        super(MLP, self).__init__()
-
-        self.linear1 = torch.nn.Linear(num_i, num_h)
-        self.relu = torch.nn.ReLU()
-        self.linear2 = torch.nn.Linear(num_h, num_h)  # 2个隐层
-        self.relu2 = torch.nn.ReLU()
-        self.linear3 = torch.nn.Linear(num_h, num_o)
-
-    def forward(self, x):
-        x = self.linear1(x)
-        x = self.relu(x)
-        x = self.linear2(x)
-        x = self.relu2(x)
-        x = self.linear3(x)
-        return x
-
-
-def train(model):
+def train(model,data_loader_train):
     # 损失函数，它将网络的输出和目标标签进行比较，并计算它们之间的差异。在训练期间，我们尝试最小化损失函数，以使输出与标签更接近
     cost = torch.nn.CrossEntropyLoss()
     # 优化器的一个实例，用于调整模型参数以最小化损失函数。
@@ -65,11 +49,14 @@ def train(model):
     optimizer = torch.optim.Adam(model.parameters())
     # 设置迭代次数
     epochs = 2
+    data_num=0
     for epoch in range(epochs):
         sum_loss = 0
         train_correct = 0
         for data in data_loader_train:
+
             inputs, labels = data  # inputs 维度：[64,1,28,28]
+            data_num+=len(inputs)
             #     print(inputs.shape)
             inputs = torch.flatten(inputs, start_dim=1)  # 展平数据，转化为[64,784]
             #     print(inputs.shape)
@@ -83,8 +70,8 @@ def train(model):
             sum_loss += loss.data
             train_correct += torch.sum(id == labels.data)
         print('[%d/%d] loss:%.3f, correct:%.3f%%, time:%s' %
-              (epoch + 1, epochs, sum_loss / len(data_loader_train),
-               100 * train_correct / len(data_train),
+              (epoch + 1, epochs, sum_loss / data_num,
+              100 * train_correct / data_num,
                time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())))
     model.train()
 
@@ -93,14 +80,16 @@ def train(model):
 def test(model, test_loader):
     model.eval()
     test_correct = 0
+    data_num=0
     for data in test_loader:
         inputs, lables = data
+        data_num+=len(inputs)
         inputs, lables = Variable(inputs).cpu(), Variable(lables).cpu()
         inputs = torch.flatten(inputs, start_dim=1)  # 展并数据
         outputs = model(inputs)
         _, id = torch.max(outputs.data, 1)
         test_correct += torch.sum(id == lables.data)
-    print(f'Accuracy on test set: {100 * test_correct / len(data_test):.3f}%')
+    print(f'Accuracy on test set: {100 * test_correct / data_num:.3f}%')
 
 
 # 预测模型
@@ -117,10 +106,45 @@ num_h = 100  # 隐含层节点数
 num_o = 10  # 输出层节点数
 batch_size = 64
 
-model = MLP(num_i, num_h, num_o)
-train(model)
-test(model, data_loader_test)
 
+def get_class(class_name):
+    if class_name not in globals():
+        raise NotImplementedError(f"Class not found: {class_name}")
+    return globals()[class_name](num_i, num_h, num_o)
+
+
+import sys, getopt
+
+
+#https://m.runoob.com/python/python-command-line-arguments.html
+def main(argv):
+
+
+   try:
+      opts, args = getopt.getopt(argv,"hl:",["learner="])
+   except getopt.GetoptError:
+      print( 'deepTest.py -l <learnername>')
+      sys.exit(2)
+   for opt, arg in opts:
+      if opt == '-h':
+         print ('deepTest.py -l <learnername>')
+         sys.exit()
+      elif opt in ("-l", "--learner"):
+         learner = arg
+
+
+   #learner="MLP"
+   model = get_class(learner)
+
+   data_loader_train,data_loader_test=load_data()
+   train(model,data_loader_train)
+   test(model, data_loader_test)
+
+if __name__ == "__main__":
+   main(sys.argv[1:])
+
+
+'''
 # 预测图片，这里取测试集前10张图片
 for i in range(10):
     # 获取测试数据中的第一张图片
@@ -134,3 +158,5 @@ for i in range(10):
     plt.show()
     pred = predict(model, test_image)
     print('Prediction:', pred.item())
+
+'''
